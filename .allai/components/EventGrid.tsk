@@ -1,0 +1,44 @@
+
+import React, { useMemo } from 'react';
+import { Event, FilterState } from '../types';
+import EventCard from './EventCard';
+
+interface EventGridProps {
+    title: string;
+    category: 'educational' | 'cultural';
+    events: Event[];
+    filters: FilterState;
+    onEdit: (event: Event) => void;
+    onRefresh: () => void;
+}
+
+const EventGrid: React.FC<EventGridProps> = ({ title, category, events, filters, onEdit, onRefresh }) => {
+    
+    const filteredEvents = useMemo(() => {
+        return events.filter(event => 
+            event.category === category &&
+            (filters.categories.length === 0 || filters.categories.includes(event.category)) &&
+            (filters.club === '' || event.organizer === filters.club)
+        );
+    }, [events, category, filters]);
+
+    return (
+        <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md mb-6">
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-700 mb-4 pb-2 border-b-2 border-blue-500">{title}</h2>
+            {filteredEvents.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                    {filteredEvents.map(event => (
+                        <EventCard key={event.id} event={event} onEdit={onEdit} onRefresh={onRefresh} />
+                    ))}
+                </div>
+            ) : (
+                <div className="text-center py-10 text-gray-500">
+                    <h3 className="text-lg font-semibold">No events found</h3>
+                    <p>Try adjusting your filters or check back later.</p>
+                </div>
+            )}
+        </div>
+    );
+};
+
+export default EventGrid;

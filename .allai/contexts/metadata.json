@@ -1,0 +1,5 @@
+{
+  "name": "College Event Manager",
+  "description": "A comprehensive platform for college clubs to manage events and for students to register. Features role-based access for club members and students, event creation, registration, and certificate generation.",
+  "requestFramePermissions": []
+}

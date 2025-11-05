@@ -1,0 +1,82 @@
+import React, { createContext, useState, useContext, useEffect, ReactNode } from 'react';
+import { User } from '../types';
+import { STORAGE_KEYS } from '../constants';
+import { getAccounts, setAccounts } from '../services/dataService';
+
+interface AuthContextType {
+    currentUser: User | null;
+    login: (email: string, password: string) => User | null;
+    signup: (name: string, email: string, password: string) => User | null;
+    logout: () => void;
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+    const [currentUser, setCurrentUser] = useState<User | null>(null);
+
+    useEffect(() => {
+        const session = localStorage.getItem(STORAGE_KEYS.SESSION);
+        if (session) {
+            setCurrentUser(JSON.parse(session));
+        }
+    }, []);
+
+    const login = (email: string, password: string): User | null => {
+        const accounts = getAccounts();
+        const account = accounts.find(acc => acc.email === email && acc.password === password);
+        if (account) {
+            const userToStore = { ...account };
+            delete userToStore.password;
+            localStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(userToStore));
+            setCurrentUser(userToStore);
+            return userToStore;
+        }
+        return null;
+    };
+
+    const signup = (name: string, email: string, password: string): User | null => {
+        if (!email.endsWith('@college.edu')) {
+            throw new Error('Only @college.edu emails are allowed.');
+        }
+
+        const accounts = getAccounts();
+        if (accounts.some(acc => acc.email === email)) {
+            throw new Error('Email already registered.');
+        }
+
+        const newUser: User = {
+            id: `user_${Date.now()}`,
+            name,
+            email,
+            password,
+            role: 'student',
+        };
+
+        const newAccounts = [...accounts, newUser];
+        setAccounts(newAccounts);
+        
+        const userToStore = { ...newUser };
+        delete userToStore.password;
+        localStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(userToStore));
+        setCurrentUser(userToStore);
+        return userToStore;
+    };
+
+    const logout = () => {
+        localStorage.removeItem(STORAGE_KEYS.SESSION);
+        setCurrentUser(null);
+    };
+
+    const value = { currentUser, login, signup, logout };
+
+    return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+};
+
+export const useAuth = () => {
+    const context = useContext(AuthContext);
+    if (context === undefined) {
+        throw new Error('useAuth must be used within an AuthProvider');
+    }
+    return context;
+};

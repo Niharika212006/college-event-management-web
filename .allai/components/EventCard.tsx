@@ -1,0 +1,130 @@
+import React from 'react';
+import { Event } from '../types';
+import { useAuth } from '../contexts/AuthContext';
+import { getEvents, getRegistrations, setEvents, setRegistrations } from '../services/dataService';
+import { processPayment } from '../services/paymentService';
+import { useNotification } from '../contexts/NotificationContext';
+
+interface EventCardProps {
+    event: Event;
+    onEdit: (event: Event) => void;
+    onRefresh: () => void;
+}
+
+const CategoryBadge: React.FC<{ category: string }> = ({ category }) => {
+    const colors = {
+        educational: 'bg-blue-100 text-blue-800',
+        cultural: 'bg-purple-100 text-purple-800',
+    };
+    const colorClass = category === 'educational' ? colors.educational : colors.cultural;
+    return <span className={`inline-block px-3 py-1 text-xs font-semibold rounded-full uppercase ${colorClass}`}>{category}</span>;
+};
+
+
+const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onRefresh }) => {
+    const { currentUser } = useAuth();
+    
+    const registrations = getRegistrations();
+    const isRegistered = registrations.some(reg => reg.eventId === event.id && reg.userId === currentUser?.id);
+
+    const handleDelete = () => {
+        if (window.confirm('Are you sure you want to delete this event? This action cannot be undone.')) {
+            const currentEvents = getEvents();
+            const updatedEvents = currentEvents.filter(e => e.id !== event.id);
+            setEvents(updatedEvents);
+            onRefresh();
+        }
+    };
+    
+    const { notify } = useNotification();
+
+    const handleRegister = async () => {
+        if (!currentUser) return;
+        if (!window.confirm(`Confirm registration for "${event.title}"? Fee: ₹${event.fee}`)) return;
+
+        const currentEvents = getEvents();
+        const eventToUpdate = currentEvents.find(e => e.id === event.id);
+        if (!eventToUpdate || eventToUpdate.availableSeats <= 0) {
+            notify('error', 'Registration failed. No available seats.');
+            onRefresh();
+            return;
+        }
+
+        // If there's a fee, process payment first
+        if (event.fee > 0) {
+            notify('info', 'Processing payment...');
+            try {
+                const res = await processPayment(event.fee, { eventId: event.id, userId: currentUser.id });
+                if (!res.success) {
+                    notify('error', `Payment failed: ${res.message || 'Unknown error'}`);
+                    return;
+                }
+                notify('success', `Payment successful (tx: ${res.transactionId}). Registering...`);
+            } catch (err: any) {
+                notify('error', `Payment error: ${err?.message || err}`);
+                return;
+            }
+        }
+
+        // finalize registration
+        eventToUpdate.availableSeats--;
+        setEvents(currentEvents);
+
+        const currentRegistrations = getRegistrations();
+        const newRegistration = {
+            id: `reg_${Date.now()}`,
+            userId: currentUser.id,
+            eventId: event.id,
+            registeredAt: new Date().toISOString(),
+            certificateGenerated: false,
+        };
+        setRegistrations([...currentRegistrations, newRegistration]);
+        onRefresh();
+        notify('success', 'Registration successful!');
+    };
+
+    const canEdit = currentUser?.role === 'club' && currentUser?.clubName === event.organizer;
+
+    return (
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-5 flex flex-col justify-between hover:shadow-lg transition-shadow duration-300">
+            <div>
+                <div className="flex justify-between items-start mb-2">
+                    <CategoryBadge category={event.category} />
+                </div>
+                <h3 className="text-lg font-bold text-gray-800 mb-2">{event.title}</h3>
+                <p className="text-sm text-gray-500 mb-1"><strong>Organizer:</strong> {event.organizer}</p>
+                <p className="text-sm text-gray-500 mb-3"><strong>Date:</strong> {new Date(event.date).toLocaleString()}</p>
+                <p className="text-gray-600 text-sm mb-4 h-20 overflow-y-auto">{event.description}</p>
+                <div className="text-sm space-y-1 mb-4">
+                    <p><strong>Seats:</strong> {event.availableSeats} / {event.seats} available</p>
+                    <p><strong>Fee:</strong> ₹{event.fee}</p>
+                </div>
+            </div>
+            <div className="mt-auto pt-4 border-t border-gray-200">
+                {currentUser?.role === 'student' && (
+                    <>
+                        {isRegistered ? (
+                             <span className="w-full text-center block font-semibold text-green-600">✓ Registered</span>
+                        ) : event.availableSeats > 0 && !event.completed ? (
+                            <button onClick={handleRegister} className="w-full bg-green-500 text-white py-2 rounded-lg hover:bg-green-600 transition duration-300">
+                                Register
+                            </button>
+                        ) : event.completed ? (
+                            <span className="w-full text-center block font-semibold text-gray-500">Event Completed</span>
+                        ) : (
+                            <span className="w-full text-center block font-semibold text-red-500">Seats Full</span>
+                        )}
+                    </>
+                )}
+                 {canEdit && (
+                    <div className="flex space-x-2">
+                        <button onClick={() => onEdit(event)} className="flex-1 bg-yellow-500 text-white py-2 rounded-lg hover:bg-yellow-600 transition duration-300">Edit</button>
+                        <button onClick={handleDelete} className="flex-1 bg-red-500 text-white py-2 rounded-lg hover:bg-red-600 transition duration-300">Delete</button>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+export default EventCard;
